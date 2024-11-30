@@ -1,1 +1,88 @@
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+#include <chrono>
 
+class Resursa {
+private:
+    int firalb = 0;
+    int firnegru = 0;
+    int waiting_alb = 0;
+    int waiting_negru = 0;
+    bool rand_alb = true;
+    std::mutex mtx;
+    std::condition_variable cv;
+
+public:
+    void enterWhite() {
+        std::unique_lock<std::mutex> lock(mtx);
+        waiting_alb++;
+        cv.wait(lock, [this]() {
+            return firnegru == 0 && (rand_alb || waiting_negru == 0);
+        });
+        waiting_alb--;
+        firalb++;
+    }
+
+    void exitWhite() {
+        std::unique_lock<std::mutex> lock(mtx);
+        firalb--;
+        if (firalb == 0) {
+            rand_alb = false;
+            cv.notify_all();
+        }
+    }
+
+    void enterBlack() {
+        std::unique_lock<std::mutex> lock(mtx);
+        waiting_negru++;
+        cv.wait(lock, [this]() {
+            return firalb == 0 && (!rand_alb || waiting_alb == 0);
+        });
+        waiting_negru--;
+        firnegru++;
+    }
+
+    void exitBlack() {
+        std::unique_lock<std::mutex> lock(mtx);
+        firnegru--;
+        if (firnegru == 0) {
+            rand_alb = true;
+            cv.notify_all();
+        }
+    }
+};
+
+void whiteTask(Resursa &resursa, int id) {
+    resursa.enterWhite();
+    std::cout << "Firul alb " << id << " foloseste resursa.\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    resursa.exitWhite();
+    std::cout << "Firul alb " << id << " a terminat resursa.\n";
+}
+
+void blackTask(Resursa &resursa, int id) {
+    resursa.enterBlack();
+    std::cout << "Firul negru " << id << " foloseste resursa.\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    resursa.exitBlack();
+    std::cout << "Firul negru " << id << " a terminat resursa.\n";
+}
+
+int main() {
+    Resursa resursa;
+    std::vector<std::thread> threads;
+
+    for (int i = 0; i < 5; i++) {
+        threads.emplace_back(whiteTask, std::ref(resursa), i);
+        threads.emplace_back(blackTask, std::ref(resursa), i);
+    }
+
+    for (auto &t : threads) {
+        t.join();
+    }
+
+    return 0;
+}
