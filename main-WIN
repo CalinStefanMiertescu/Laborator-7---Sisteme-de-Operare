@@ -1,0 +1,97 @@
+import java.util.concurrent.locks.*;
+
+class Resursa {
+    private int firalb = 0;
+    private int firnegru = 0;
+    private int waiting_alb = 0;
+    private int waiting_negru = 0;
+    private boolean rand_alb = true;
+    private final Lock lock = new ReentrantLock();
+    private final Condition canAccess = lock.newCondition();
+
+    public void enterWhite() throws InterruptedException {
+        lock.lock();
+        try {
+            waiting_alb++;
+            while (firnegru > 0 || (!rand_alb && waiting_negru > 0)) {
+                canAccess.await();
+            }
+            waiting_alb--;
+            firalb++;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void exitWhite() {
+        lock.lock();
+        try {
+            firalb--;
+            if (firalb == 0) {
+                rand_alb = false;
+                canAccess.signalAll();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void enterBlack() throws InterruptedException {
+        lock.lock();
+        try {
+            waiting_negru++;
+            while (firalb > 0 || (rand_alb && waiting_alb > 0)) {
+                canAccess.await();
+            }
+            waiting_negru--;
+            firnegru++;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void exitBlack() {
+        lock.lock();
+        try {
+            firnegru--;
+            if (firnegru == 0) {
+                rand_alb = true;
+                canAccess.signalAll();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) {
+        Resursa resource = new Resursa();
+        Runnable whiteTask = () -> {
+            try {
+                resource.enterWhite();
+                System.out.println(Thread.currentThread().getName() + " foloseste resursa. (alb)");
+                Thread.sleep(1000);
+                resource.exitWhite();
+                System.out.println(Thread.currentThread().getName() + " a terminat resursa.");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+
+        Runnable blackTask = () -> {
+            try {
+                resource.enterBlack();
+                System.out.println(Thread.currentThread().getName() + " foloseste resursa. (negru)");
+                Thread.sleep(1000);
+                resource.exitBlack();
+                System.out.println(Thread.currentThread().getName() + " a terminat resursa. ");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+
+        for (int i = 0; i < 5; i++) {
+            new Thread(whiteTask, "Firul alb cu numarul " + i).start();
+            new Thread(blackTask, "Firul negru cu numarul " + i).start();
+        }
+    }
+}
